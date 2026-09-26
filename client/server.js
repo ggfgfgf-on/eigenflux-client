@@ -52,7 +52,7 @@ function cached(key, ttlMs, producer) {
 let readBusy = 0;
 const readQueue = [];
 let writeChain = Promise.resolve();
-const MAX_READS = 3;
+const MAX_READS = 1; // 全部串行：网关内部零并发，杜绝凭据锁自相竞争；外部直连 CLI 请遵守手册规则 2
 
 const LOCK_RE = /credential refresh lock|timed out waiting|Agent V2 authentication failed/i;
 

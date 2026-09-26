@@ -151,7 +151,6 @@ $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') clos
 
 function friendlyErr(res) {
   const raw = String((res && res.errText) || (res && res.error) || '');
-  if (/abort|aborted/i.test(raw)) return '请求超时（网关未在时限内响应）';
   if (/not logged in/i.test(raw)) return '尚未接入网络：完成 Console 验证后此功能才可用';
   if (/401|unauthorized/i.test(raw)) return '未授权（401）：请检查接入状态';
   return raw || '未知错误';
