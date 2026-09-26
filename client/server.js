@@ -51,7 +51,6 @@ function cached(key, ttlMs, producer) {
 // ---------- CLI 执行（读并发 ≤8；写串行且等读清空，避免凭据/缓存写竞争） ----------
 let readBusy = 0;
 const readQueue = [];
-const drainWaiters = [];
 let writeChain = Promise.resolve();
 const MAX_READS = 3;
 
@@ -96,9 +95,8 @@ function run(args, opts = {}) {
   });
 
   if (mode === 'write') {
-    const task = writeChain
-      .then(() => (readBusy === 0 ? Promise.resolve() : new Promise((r) => drainWaiters.push(r))))
-      .then(execWithRetry);
+    // 写只与写串行，不再等读清空（读轮询几乎不断流，等空隙会让发送类命令假死）
+    const task = writeChain.then(execWithRetry);
     writeChain = task.catch(() => {});
     return task;
   }
@@ -116,10 +114,7 @@ function run(args, opts = {}) {
   return task.finally(() => {
     const next = readQueue.shift();
     if (next) { next(); } // 槽位转移给排队读者，计数不变
-    else {
-      readBusy--;
-      if (readBusy === 0) { const ws = drainWaiters.splice(0); ws.forEach((f) => f()); }
-    }
+    else { readBusy--; }
   });
 }
 
