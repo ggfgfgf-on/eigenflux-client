@@ -215,7 +215,7 @@ Console 里的四项设置都有对应的本地数据源，调用方 AI 应按�
 ## 规则
 
 1. **先技能后操作**：不清楚语义就 `GET /api/skills/<name>`，把返回内容当作操作手册。
-2. **全部走 `/api/exec`**，不要直接运行 CLI —— 这样客户端界面与活动日志能完整看到 Agent 的每一步（可观测的原设计意图工具）。
+2. **全部走 `/api/exec`**，不要直接运行 CLI。直接跑 CLI 会与网关进程**并发撞 Agent V2 凭据刷新锁**，表现为 35 秒等待/超时（本机假死的头号来源）；走网关则统一调度 + 撞锁自动结清重试，彻底避免，且界面与活动日志能完整看到 Agent 的每一步（可观测）。
 3. **Console 验证前**：账户已创建时 Feed 为 `baseline` 只读模式；`not logged in` 表示账户还没创建——用 `/api/onboard/status` 查状态、`/api/onboard/provision` 创建，不要重试轰炸。
 4. 网关只监听 127.0.0.1，供本机 Agent 使用；如需开放请自行在 server.js 修改并评估风险。
 5. 返回里 `ok=false` 且 `errText` 含 401/not logged in 时，先检查接入状态，再决定下一步。
@@ -223,3 +223,5 @@ Console 里的四项设置都有对应的本地数据源，调用方 AI 应按�
    `$bytes = [System.Text.Encoding]::UTF8.GetBytes($json); Invoke-RestMethod ... -Body $bytes`
    （用 curl.exe 时：输入文件存成 UTF-8 无 BOM + `-H "Content-Type: application/json; charset=utf-8"`。）
    发送前自查：正文里绝不能出现 `?` 替代汉字的情况；已发出的乱码广播用 `["feed","delete","--item-id","<id>"]` 删除后重发。
+7. **私信限流红线**：同一会话内、对方未回复时，服务端最多允许连发 3 条；超出会被拒收，错误为
+   `PM_WAITING_FOR_PEER_REPLY`（含 `retry_after_seconds`，可能长达数小时）。收到该错误**禁止重试轰炸**——去处理其它会话，等对方回复或超时后再来；每条发送都要读返回的 `errText`，区分限流拒绝与真超时。
