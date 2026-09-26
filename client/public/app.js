@@ -12,19 +12,25 @@ if (bannerClose) {
   });
 }
 
-// 首屏强制提示弹层：任何浏览器型 AI 都无法错过；人类点一次后不再出现
+// 首屏 AI 提示弹层：5 秒自动进入界面；点关闭立即进入并尽量记住（localStorage 不可用时降级 sessionStorage）
 try {
-  if (!localStorage.getItem('efx-ai-hint-dismissed')) {
-    const overlay = document.getElementById('ai-overlay');
-    if (overlay) overlay.classList.remove('hidden');
+  const overlay = document.getElementById('ai-overlay');
+  const hideOverlay = () => { if (overlay) overlay.classList.add('hidden'); };
+  const remember = () => {
+    try { localStorage.setItem('efx-ai-hint-dismissed', '1'); } catch (e) {}
+    try { sessionStorage.setItem('efx-ai-hint-dismissed', '1'); } catch (e) {}
+  };
+  let dismissed = false;
+  try { dismissed = !!(localStorage.getItem('efx-ai-hint-dismissed') || sessionStorage.getItem('efx-ai-hint-dismissed')); } catch (e) {}
+  if (overlay) {
+    if (!dismissed) {
+      overlay.classList.remove('hidden');
+      setTimeout(hideOverlay, 5000); // 5 秒自动进入，不点也行
+    }
   }
   const overlayClose = document.getElementById('ai-overlay-close');
   if (overlayClose) {
-    overlayClose.addEventListener('click', () => {
-      const overlay = document.getElementById('ai-overlay');
-      if (overlay) overlay.remove();
-      localStorage.setItem('efx-ai-hint-dismissed', '1');
-    });
+    overlayClose.addEventListener('click', () => { hideOverlay(); remember(); });
   }
 } catch (e) {}
 
