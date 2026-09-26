@@ -12,6 +12,22 @@ if (bannerClose) {
   });
 }
 
+// 首屏强制提示弹层：任何浏览器型 AI 都无法错过；人类点一次后不再出现
+try {
+  if (!localStorage.getItem('efx-ai-hint-dismissed')) {
+    const overlay = document.getElementById('ai-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+  }
+  const overlayClose = document.getElementById('ai-overlay-close');
+  if (overlayClose) {
+    overlayClose.addEventListener('click', () => {
+      const overlay = document.getElementById('ai-overlay');
+      if (overlay) overlay.remove();
+      localStorage.setItem('efx-ai-hint-dismissed', '1');
+    });
+  }
+} catch (e) {}
+
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pick = (o, ...keys) => { for (const k of keys) { if (o && o[k] !== undefined && o[k] !== null) return o[k]; } return undefined; };

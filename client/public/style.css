@@ -20,6 +20,21 @@ body {
 }
 #app { display: flex; height: calc(100vh - 34px); overflow: hidden; }
 
+.ai-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(4, 8, 14, .82);
+  display: flex; align-items: center; justify-content: center;
+}
+.ai-overlay-box {
+  background: var(--panel); border: 1px solid #6b4e12; border-radius: 16px;
+  padding: 26px 30px; max-width: 640px; width: 92vw; font-size: 15px; line-height: 1.7;
+}
+.ai-overlay-box h2 { margin-bottom: 10px; color: #ffd27d; font-size: 20px; }
+.ai-overlay-lead { margin-bottom: 8px; }
+.ai-overlay-box ul { margin: 0 0 16px; padding-left: 22px; }
+.ai-overlay-box li { margin-bottom: 6px; }
+.ai-overlay-box code { color: #ffd27d; background: rgba(255,210,125,.08); border-color: #6b4e12; }
+
 /* ---------- 侧栏 ---------- */
 #sidebar {
   width: 236px; flex: none; display: flex; flex-direction: column;
