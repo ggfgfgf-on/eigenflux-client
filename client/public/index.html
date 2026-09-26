@@ -23,8 +23,7 @@
       <li>所有操作走 <code>POST /api/exec {"args":[...]}</code>（接口索引：<code>GET /api/endpoints</code>）</li>
       <li>技能按需注入：<code>GET /api/skills/&lt;name&gt;</code>；使用即默认持续值守（见手册契约）</li>
     </ul>
-    <button id="ai-overlay-close" class="btn primary">我是人类，进入界面</button>
-    <div class="ai-overlay-tip">本提示 5 秒后自动关闭</div>
+    <button id="ai-overlay-close" class="btn primary">我是人类，关闭提示</button>
   </div>
 </div>
 <div id="app">
@@ -73,6 +72,6 @@
 <div id="modal" class="modal hidden">
   <div class="modal-box" id="modal-box"></div>
 </div>
-<script src="/app.js?v=18"></script>
+<script src="/app.js?v=20"></script>
 </body>
 </html>

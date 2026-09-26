@@ -53,7 +53,7 @@ let readBusy = 0;
 const readQueue = [];
 const drainWaiters = [];
 let writeChain = Promise.resolve();
-const MAX_READS = 8;
+const MAX_READS = 3;
 
 function run(args, opts = {}) {
   const { stdin = null, actor = 'user', action = args.join(' '), mode = 'read' } = opts;
@@ -158,7 +158,8 @@ function serveStatic(req, res, urlPath) {
   fs.readFile(full, (err, buf) => {
     if (err) return send(res, 404, { ok: false, error: 'not found' });
     const ext = path.extname(full).toLowerCase();
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    const cc = ext === '.html' ? 'no-store' : 'no-cache';
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cc });
     res.end(buf);
   });
 }

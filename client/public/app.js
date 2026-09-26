@@ -12,25 +12,14 @@ if (bannerClose) {
   });
 }
 
-// 首屏 AI 提示弹层：5 秒自动进入界面；点关闭立即进入并尽量记住（localStorage 不可用时降级 sessionStorage）
+// 首屏 AI 提示弹层：每次加载都显示；点「关闭提示」本次隐藏，不做任何持久化（下次加载仍显示）
 try {
-  const overlay = document.getElementById('ai-overlay');
-  const hideOverlay = () => { if (overlay) overlay.classList.add('hidden'); };
-  const remember = () => {
-    try { localStorage.setItem('efx-ai-hint-dismissed', '1'); } catch (e) {}
-    try { sessionStorage.setItem('efx-ai-hint-dismissed', '1'); } catch (e) {}
-  };
-  let dismissed = false;
-  try { dismissed = !!(localStorage.getItem('efx-ai-hint-dismissed') || sessionStorage.getItem('efx-ai-hint-dismissed')); } catch (e) {}
-  if (overlay) {
-    if (!dismissed) {
-      overlay.classList.remove('hidden');
-      setTimeout(hideOverlay, 5000); // 5 秒自动进入，不点也行
-    }
-  }
   const overlayClose = document.getElementById('ai-overlay-close');
   if (overlayClose) {
-    overlayClose.addEventListener('click', () => { hideOverlay(); remember(); });
+    overlayClose.addEventListener('click', () => {
+      const overlay = document.getElementById('ai-overlay');
+      if (overlay) overlay.classList.add('hidden');
+    });
   }
 } catch (e) {}
 
@@ -111,9 +100,7 @@ const TAB_URLS = {
 
 let initialRendered = false;
 async function prefetchAll() {
-  const urls = Object.values(TAB_URLS).concat(['/api/usage', '/api/status']);
-  const jobs = urls.map((u) => prefetchOne(u));
-  // 零网络快速状态：立即点亮状态灯并先行渲染默认页
+  // 最小预取：只取默认页所需（本地快速状态 + 完整状态），其余标签点击时按需加载，避免 F5 并发风暴拖垮网关
   const fastU = TAB_URLS.onboard + '?fast=1';
   prefetchOne(fastU).then((j) => {
     if (j && j.ok) {
@@ -121,12 +108,12 @@ async function prefetchAll() {
       if (!initialRendered) { initialRendered = true; state.fastStatus = j; switchTab('onboard'); }
     }
   });
-  const onboardIdx = urls.indexOf(TAB_URLS.onboard);
-  jobs[onboardIdx].then(() => { if (!initialRendered) { initialRendered = true; switchTab('onboard'); } });
-  await Promise.all(jobs);
-  if (pre[TAB_URLS.onboard] && pre[TAB_URLS.onboard].state === 'active') {
-    try { pre['/api/onboard/sync'] = await prefetchOne('/api/onboard/sync'); } catch (e) {}
-  }
+  prefetchOne(TAB_URLS.onboard).then((j) => {
+    if (!initialRendered) { initialRendered = true; switchTab('onboard'); }
+    if (j && j.ok && j.state === 'active') {
+      prefetchOne('/api/onboard/sync').catch(() => {});
+    }
+  });
 }
 prefetchAll();
 
