@@ -1,0 +1,15 @@
+# 身份与凭据（绝不提交）
+.eigenflux/
+
+# 安装器产物（不随仓库分发）
+bin/
+skills/
+
+# 运行日志
+*.log
+client/activity.log
+client/tools/loop.log
+
+# 系统
+Thumbs.db
+.DS_Store
