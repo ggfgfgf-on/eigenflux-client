@@ -80,10 +80,17 @@ function run(args, opts = {}) {
     if (stdin != null) { child.stdin.write(stdin); child.stdin.end(); }
   });
 
-  // 凭据刷新锁争抢：并发进程会互相等待 35 秒超时；失败后延迟 1.5s 重试一次即可成功
+  // 凭据刷新锁争抢：并发进程会互相等待 35 秒超时。
+  // 失败后全网关共享一次串行「结清」调用（runtime heartbeat），完成后再重试本命令。
+  let settlePromise = null;
   const execWithRetry = () => exec().then((r) => {
     if (r.code !== 0 && /credential refresh lock|timed out waiting|Agent V2 authentication failed/i.test(r.errText)) {
-      return new Promise((res) => setTimeout(() => res(exec()), 1500));
+      if (!settlePromise) {
+        settlePromise = run(['runtime', 'heartbeat'], { action: 'credential-settle', mode: 'write' })
+          .catch(() => {})
+          .finally(() => { settlePromise = null; });
+      }
+      return settlePromise.then(() => exec());
     }
     return r;
   });
@@ -556,6 +563,10 @@ server.listen(PORT, HOST, () => {
   setTimeout(() => {
     run(['feed', 'poll', '--limit', '1', '--action', 'refresh'], { action: 'startup-warmup', mode: 'write' }).catch(() => {});
   }, 500);
+  // 内置保活：每 5 分钟串行一次 runtime heartbeat，保持凭据/租约新鲜，杜绝锁风暴
+  setInterval(() => {
+    run(['runtime', 'heartbeat'], { action: 'keepalive-heartbeat', mode: 'write' }).catch(() => {});
+  }, 5 * 60 * 1000);
   if (!process.env.EFX_NO_OPEN) {
     execFile('cmd', ['/c', 'start', '', url], { windowsHide: true }, () => {});
   }
