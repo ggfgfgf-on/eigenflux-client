@@ -69,7 +69,7 @@ const api = {
         return hit;
       }
       const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 60000);
+      const t = setTimeout(() => ctl.abort(), 20000);
       try {
         const r = await fetch(u, { signal: ctl.signal });
         if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
@@ -644,6 +644,13 @@ async function renderOnboard(showLoading) {
   paintPill(res && res.ok ? res.state : null);
   if (usedFast && !pre['/api/onboard/status']) {
     api.get('/api/onboard/status').then((r2) => { pre['/api/onboard/status'] = r2; renderOnboard(false); });
+  }
+  const loadErr = (!res || res.ok === false) ? ((res && res.error) || '网络异常') : null;
+  if (loadErr) {
+    c.innerHTML = `<div class="card"><div class="head"><b>⚠️ 状态加载失败</b></div>
+      <div class="body">${esc(loadErr)}<br><span style="color:var(--muted);font-size:12px">网关可能正忙或未启动（本页数据 20 秒超时）。</span></div>
+      <div class="foot"><button class="btn small" onclick="renderOnboard(false)">重试</button></div></div>`;
+    return;
   }
   const labels = {
     no_account: ['未创建账户', '还没有账户：执行下方第 1、2 步'],
