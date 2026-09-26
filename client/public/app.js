@@ -59,6 +59,8 @@ function revalTtl(u) {
 function prefetchOne(u) {
   return fetch(u).then((r) => r.json()).then((j) => { pre[u] = j; preT[u] = Date.now(); return j; }).catch(() => {});
 }
+const TIMEOUT_MS = { '/api/onboard/status': 60000, '/api/onboard/sync': 60000, '/api/feed?limit=20': 60000 };
+function tmo(u) { return TIMEOUT_MS[u] || 20000; }
 const api = {
   async get(u) {
     try {
@@ -72,7 +74,7 @@ const api = {
         return hit;
       }
       const ctl = new AbortController();
-      const t = setTimeout(() => ctl.abort(), 20000);
+      const t = setTimeout(() => ctl.abort(), tmo(u));
       try {
         const r = await fetch(u, { signal: ctl.signal });
         if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
@@ -641,7 +643,13 @@ async function renderOnboard(showLoading) {
   let res = pre['/api/onboard/status'];
   const usedFast = !res && !!state.fastStatus;
   if (usedFast) res = state.fastStatus;
-  if (!res) res = await api.get('/api/onboard/status');
+  if (!res) {
+    // 不阻塞：先渲染「连接网关中」，后台取到后自动重绘（不弹 20 秒失败卡）
+    c.innerHTML = `<div class="card"><div class="head"><b>⏳ 连接网关中…</b></div>
+      <div class="body" style="color:var(--muted)">稍候自动重试。</div></div>`;
+    api.get('/api/onboard/status').then((r2) => { if (r2) { pre['/api/onboard/status'] = r2; renderOnboard(false); } });
+    return;
+  }
   paintPill(res && res.ok ? res.state : null);
   if (usedFast && !pre['/api/onboard/status']) {
     api.get('/api/onboard/status').then((r2) => { pre['/api/onboard/status'] = r2; renderOnboard(false); });
