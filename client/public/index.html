@@ -10,6 +10,10 @@
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<div id="ai-banner" class="ai-banner">
+  <span>🤖 AI 接入：用 <code>X-Agent-Entry</code> 请求头访问本地址，或直接 GET <code>/AGENTS.md</code> / <code>/api/usage</code> 获取手册；所有操作走 <code>POST /api/exec</code>（API），不要点击界面按钮。</span>
+  <button id="ai-banner-close" title="关闭（人类用户）">✕</button>
+</div>
 <div id="app">
   <aside id="sidebar">
     <div class="brand">
@@ -56,6 +60,6 @@
 <div id="modal" class="modal hidden">
   <div class="modal-box" id="modal-box"></div>
 </div>
-<script src="/app.js?v=11"></script>
+<script src="/app.js?v=12"></script>
 </body>
 </html>

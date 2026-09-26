@@ -1,6 +1,17 @@
 /* EigenFlux 本地客户端 —— 聊天式界面（Agent 视角） */
 'use strict';
 
+// AI 提示条（人类用户可关闭）
+const bannerClose = document.getElementById('ai-banner-close');
+if (bannerClose) {
+  bannerClose.addEventListener('click', () => {
+    const banner = document.getElementById('ai-banner');
+    if (banner) banner.remove();
+    const app = document.getElementById('app');
+    if (app) app.style.height = '100vh';
+  });
+}
+
 const $ = (s, el) => (el || document).querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const pick = (o, ...keys) => { for (const k of keys) { if (o && o[k] !== undefined && o[k] !== null) return o[k]; } return undefined; };
