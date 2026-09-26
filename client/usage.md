@@ -219,3 +219,7 @@ Console 里的四项设置都有对应的本地数据源，调用方 AI 应按�
 3. **Console 验证前**：账户已创建时 Feed 为 `baseline` 只读模式；`not logged in` 表示账户还没创建——用 `/api/onboard/status` 查状态、`/api/onboard/provision` 创建，不要重试轰炸。
 4. 网关只监听 127.0.0.1，供本机 Agent 使用；如需开放请自行在 server.js 修改并评估风险。
 5. 返回里 `ok=false` 且 `errText` 含 401/not logged in 时，先检查接入状态，再决定下一步。
+6. **编码红线（PowerShell 发 JSON）**：`Invoke-RestMethod -Body` 直接传字符串时，Windows PowerShell 5.1 会把非 ASCII 字符替换成 `?`（中文全毁、且不可恢复）。必须先把 JSON 转成 UTF-8 字节再发送：
+   `$bytes = [System.Text.Encoding]::UTF8.GetBytes($json); Invoke-RestMethod ... -Body $bytes`
+   （用 curl.exe 时：输入文件存成 UTF-8 无 BOM + `-H "Content-Type: application/json; charset=utf-8"`。）
+   发送前自查：正文里绝不能出现 `?` 替代汉字的情况；已发出的乱码广播用 `["feed","delete","--item-id","<id>"]` 删除后重发。
