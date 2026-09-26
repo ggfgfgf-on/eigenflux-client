@@ -200,17 +200,24 @@ function loadingBox() {
 }
 
 function normFeedItem(raw) {
+  const ai = raw.author_identity || {};
+  const md = raw.metadata || {};
+  const pv = raw.preview || {};
+  const im = raw.intent_match || null;
   return {
-    id: pick(raw, 'item_id', 'id', 'feed_item_id'),
-    content: pick(raw, 'content', 'text', 'title', 'summary', 'description', 'body') || '(无内容)',
-    domains: arr(raw, 'domains', 'tags', 'keywords', 'topics').map(String),
-    score: pick(raw, 'score', 'quality_score', 'quality'),
-    time: pick(raw, 'created_at', 'published_at', 'updated_at', 'create_time', 'time'),
-    source: pick(raw, 'source_name', 'publisher_name', 'agent_name', 'author', 'nickname'),
-    sourceId: pick(raw, 'source_uid', 'publisher_id', 'agent_id', 'uid'),
-    url: pick(raw, 'source_url', 'url', 'link'),
+    id: pick(raw, 'item_id', 'id', 'source_ref.id'),
+    content: pick(pv, 'text', 'content') || pick(md, 'summary', 'title') || pick(raw, 'content', 'title', 'text') || '(无内容)',
+    domains: arr(md, 'domains').map(String),
+    keywords: arr(md, 'keywords').map(String),
+    score: im ? im.score : pick(raw, 'score', 'quality_score'),
+    matchStatus: im ? im.status : null,
+    time: pick(md, 'updated_at', 'created_at') || pick(raw, 'updated_at', 'created_at', 'time'),
+    source: ai.agent_name || pick(raw, 'source_name', 'publisher_name', 'author', 'nickname') || '',
+    sourceId: ai.short_id || ai.agent_id || pick(raw, 'source_uid', 'publisher_id', 'agent_id') || '',
+    url: pick(md, 'source_url', 'url') || pick(raw, 'source_url', 'url', 'link'),
     own: !!pick(raw, 'own', 'is_own', 'mine', 'is_mine'),
-    type: pick(raw, 'type', 'content_type'),
+    type: md.broadcast_type || pick(raw, 'type', 'content_type') || '',
+    actions: Array.isArray(raw.recommended_actions) ? raw.recommended_actions.length : 0,
   };
 }
 
@@ -237,10 +244,13 @@ async function renderFeed(showLoading) {
   if (items.length) state.feedItems = items;
   const itemHtml = (list) => list.map((it, i) => {
     const n = normFeedItem(it);
+    const tags = n.domains.concat(n.keywords).filter((v, idx, a) => a.indexOf(v) === idx);
     const chips = [
       n.type ? `<span class="chip hl">${esc(n.type)}</span>` : '',
-      ...n.domains.slice(0, 4).map((d) => `<span class="chip">${esc(d)}</span>`),
-      n.score !== undefined ? `<span class="chip hl">评分 ${n.score}</span>` : '',
+      ...tags.slice(0, 4).map((d) => `<span class="chip">${esc(d)}</span>`),
+      n.matchStatus === 'matched' ? '<span class="chip hl">已匹配意图</span>' : '',
+      n.score !== undefined ? `<span class="chip hl">匹配 ${(n.score * 100).toFixed(0)}%</span>` : '',
+      n.actions ? `<span class="chip">建议动作 ×${n.actions}</span>` : '',
     ].join('');
     return `<div class="card">
       <div class="head">
