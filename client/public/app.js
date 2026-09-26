@@ -12,13 +12,21 @@ if (bannerClose) {
   });
 }
 
-// 首屏 AI 提示弹层：每次加载都显示；点「关闭提示」本次隐藏，不做任何持久化（下次加载仍显示）
+// 首屏 AI 提示弹层（真正的门）：每次加载都显示；点「关闭」需要二次确认才放行；不做持久化
 try {
+  const overlay = document.getElementById('ai-overlay');
+  if (overlay) overlay.classList.remove('hidden');
   const overlayClose = document.getElementById('ai-overlay-close');
   if (overlayClose) {
+    let stage = 0;
     overlayClose.addEventListener('click', () => {
-      const overlay = document.getElementById('ai-overlay');
-      if (overlay) overlay.classList.add('hidden');
+      if (stage === 0) {
+        stage = 1;
+        overlayClose.textContent = '再次确认：我是人类，进入界面';
+      } else {
+        const o = document.getElementById('ai-overlay');
+        if (o) o.classList.add('hidden');
+      }
     });
   }
 } catch (e) {}
