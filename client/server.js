@@ -48,11 +48,33 @@ function cached(key, ttlMs, producer) {
   return p;
 }
 
-// ---------- CLI 执行（读并发 ≤8；写串行且等读清空，避免凭据/缓存写竞争） ----------
+// ---------- CLI 执行（读并发 ≤6；写串行；凭据到期前主动单飞预刷新，杜绝锁风暴） ----------
 let readBusy = 0;
 const readQueue = [];
 let writeChain = Promise.resolve();
-const MAX_READS = 1; // 全部串行：网关内部零并发，杜绝凭据锁自相竞争；外部直连 CLI 请遵守手册规则 2
+const MAX_READS = 6;
+
+// 凭据预刷新：读本地 expires_at，到期前 60 秒内全网关只做一次串行刷新
+let credExpiresAt = 0;
+let refreshChain = Promise.resolve();
+function readCredExpiry() {
+  try {
+    const p = path.join(HOME, 'servers', 'eigenflux', 'agent-v2-credentials.json');
+    const o = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (typeof o.expires_at === 'number') credExpiresAt = o.expires_at;
+  } catch (e) {}
+}
+function ensureFresh() {
+  readCredExpiry();
+  if (!credExpiresAt || Date.now() <= credExpiresAt - 60000) return Promise.resolve();
+  const t = refreshChain
+    .then(() => run(['runtime', 'heartbeat'], { action: 'credential-pre-refresh', mode: 'write', noSettle: true }))
+    .then(() => { readCredExpiry(); })
+    .catch(() => {});
+  refreshChain = t;
+  return t;
+}
+readCredExpiry();
 
 const LOCK_RE = /credential refresh lock|timed out waiting|Agent V2 authentication failed/i;
 
@@ -81,9 +103,7 @@ function run(args, opts = {}) {
     if (stdin != null) { child.stdin.write(stdin); child.stdin.end(); }
   });
 
-  // 凭据刷新锁争抢：并发进程会互相等待 35 秒超时。
-  // 失败后全网关共享一次串行「结清」调用；结清调用本身绝不走结清逻辑（noSettle），
-  // 否则结清再撞锁时会等待自己 → 永久死锁 → 后续所有命令挂起。
+  // 撞锁兜底：失败后全网关共享一次串行「结清」；结清本身 noSettle，绝不递归（防自等死锁）
   let settlePromise = null;
   const execWithRetry = () => exec().then((r) => {
     if (!noSettle && r.code !== 0 && LOCK_RE.test(r.errText)) {
@@ -98,22 +118,20 @@ function run(args, opts = {}) {
   });
 
   if (mode === 'write') {
-    // 写只与写串行，不再等读清空（读轮询几乎不断流，等空隙会让发送类命令假死）
-    const task = writeChain.then(execWithRetry);
+    // 写只与写串行；普通命令先过「凭据新鲜」检查（noSettle 的内部调用除外）
+    const prev = writeChain; // 必须先捕获上一环，避免自指死锁
+    const task = (noSettle ? Promise.resolve() : ensureFresh())
+      .then(() => prev)
+      .then(execWithRetry);
     writeChain = task.catch(() => {});
     return task;
   }
 
-  let queued = false;
-  let waitSlot;
-  if (readBusy >= MAX_READS) {
-    queued = true;
-    waitSlot = new Promise((r) => readQueue.push(r));
-  } else {
-    readBusy++;
-    waitSlot = Promise.resolve();
-  }
-  const task = waitSlot.then(() => execWithRetry());
+  const go = () => {
+    const waitSlot = readBusy >= MAX_READS ? new Promise((r) => readQueue.push(r)) : (readBusy++, Promise.resolve());
+    return waitSlot.then(() => execWithRetry());
+  };
+  const task = (noSettle ? Promise.resolve() : ensureFresh()).then(go);
   return task.finally(() => {
     const next = readQueue.shift();
     if (next) { next(); } // 槽位转移给排队读者，计数不变
