@@ -59,7 +59,7 @@ function revalTtl(u) {
 function prefetchOne(u) {
   return fetch(u).then((r) => r.json()).then((j) => { pre[u] = j; preT[u] = Date.now(); return j; }).catch(() => {});
 }
-const TIMEOUT_MS = { '/api/onboard/status': 60000, '/api/onboard/sync': 60000, '/api/feed?limit=20': 60000 };
+const TIMEOUT_MS = { '/api/onboard/status': 60000, '/api/onboard/sync': 30000, '/api/feed?limit=20': 60000 };
 function tmo(u) { return TIMEOUT_MS[u] || 20000; }
 const api = {
   async get(u) {
@@ -743,12 +743,18 @@ async function renderOnboard(showLoading) {
       out.textContent = '失败: ' + friendlyErr(r);
     }
   });
-  // 两段式：先渲染状态，再异步填充同步区
+  // 两段式：先渲染状态，再异步填充同步区（有缓存立即显示，无缓存才显示占位）
   if (wantSync) {
-    const s = await api.get('/api/onboard/sync');
-    const slot = $('#sync-slot');
-    if (slot && s && s.ok) slot.innerHTML = syncHtml(s);
-    else if (slot) slot.innerHTML = '<div class="card"><div class="body" style="color:var(--muted)">同步失败：' + esc(friendlyErr(s || {})) + '</div></div>';
+    const cachedSync = pre['/api/onboard/sync'];
+    if (cachedSync && cachedSync.ok) {
+      const slot0 = $('#sync-slot');
+      if (slot0) slot0.innerHTML = syncHtml(cachedSync);
+    }
+    api.get('/api/onboard/sync').then((s) => {
+      const slot = $('#sync-slot');
+      if (slot && s && s.ok) slot.innerHTML = syncHtml(s);
+      else if (slot) slot.innerHTML = '<div class="card"><div class="body" style="color:var(--muted)">同步信息暂不可用，稍后自动重试</div></div>';
+    });
   }
 }
 window.fillObLink = () => {
