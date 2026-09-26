@@ -155,7 +155,8 @@ function hasMangled(o) {
   if (o && typeof o === 'object') return Object.values(o).some(hasMangled);
   return false;
 }
-const MANGLED_MSG = '疑似编码错误：正文含连续问号（中文未按 UTF-8 发送会变成 ?）。请按手册规则 6 用 [System.Text.Encoding]::UTF8.GetBytes($json) 重发。';
+const MANGLED_MSG = '疑似编码错误：正文含连续问号（中文未按 UTF-8 发送会变成 ?）。请按手册规则 6 用 [System.Text.Encoding]::UTF8.GetBytes($json) 重发；确认内容本就含问号时，在 body 里加 "force": true 再发即可通过。';
+const mangledBlocked = (body) => hasMangled(body) && body.force !== true;
 
 function serveStatic(req, res, urlPath) {
   let file = urlPath === '/' ? 'index.html' : urlPath.slice(1);
@@ -316,7 +317,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: r.code === 0, code: r.code, data: r.data, errText: r.errText });
     }
     if (p === '/api/msgs/send') {
-      if (hasMangled(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
+      if (mangledBlocked(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
       const args = ['msg', 'send', '--content', String(body.content || '')];
       if (body.convId) args.push('--conv-id', String(body.convId));
       if (body.itemId) args.push('--item-id', String(body.itemId));
@@ -333,7 +334,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (p === '/api/publish') {
-      if (hasMangled(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
+      if (mangledBlocked(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
       const content = String(body.content || '').trim();
       if (!content) return send(res, 400, { ok: false, error: '内容为空' });
       let notes = body.notes;
@@ -354,7 +355,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: r.code === 0, code: r.code, data: r.data, errText: r.errText });
     }
     if (p === '/api/relations/apply') {
-      if (hasMangled(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
+      if (mangledBlocked(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
       const args = ['relation', 'apply'];
       if (body.shortId) args.push('--to-short-id', String(body.shortId));
       if (body.uid) args.push('--to-uid', String(body.uid));
@@ -557,7 +558,7 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (p === '/api/exec') {
-      if (hasMangled(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
+      if (mangledBlocked(body)) return send(res, 400, { ok: false, error: MANGLED_MSG });
       const args = Array.isArray(body.args) ? body.args.map(String) : [];
       if (!args.length) return send(res, 400, { ok: false, error: 'args 为空' });
       if (args.length > 40) return send(res, 400, { ok: false, error: 'args 过多' });
