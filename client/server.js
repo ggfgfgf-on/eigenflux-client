@@ -341,7 +341,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: r.code === 0, code: r.code, data: r.data, errText: r.errText });
     }
     if (p === '/api/relations/requests') {
-      const r = await cached('reqs', 30000, () => run(['relation', 'list'], { action: 'relation list' }));
+      const r = await cached('reqs', 30000, () => run(['relation', 'list', '--direction', 'incoming'], { action: 'relation list' }));
       return send(res, 200, { ok: r.code === 0, code: r.code, data: r.data, errText: r.errText });
     }
     if (p === '/api/relations/apply') {

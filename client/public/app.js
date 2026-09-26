@@ -58,24 +58,42 @@ function prefetchOne(u) {
 }
 const api = {
   async get(u) {
-    const hit = pre[u];
-    if (hit) {
-      const age = Date.now() - (preT[u] || 0);
-      if (age > revalTtl(u)) {
-        preT[u] = Date.now(); // 防并发重复触发
-        prefetchOne(u).catch(() => { preT[u] = 0; });
+    try {
+      const hit = pre[u];
+      if (hit) {
+        const age = Date.now() - (preT[u] || 0);
+        if (age > revalTtl(u)) {
+          preT[u] = Date.now(); // 防并发重复触发
+          prefetchOne(u).catch(() => { preT[u] = 0; });
+        }
+        return hit;
       }
-      return hit;
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 60000);
+      try {
+        const r = await fetch(u, { signal: ctl.signal });
+        if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+        const j = await r.json();
+        pre[u] = j;
+        preT[u] = Date.now();
+        return j;
+      } finally { clearTimeout(t); }
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e || 'network error') };
     }
-    const r = await fetch(u);
-    const j = await r.json();
-    pre[u] = j;
-    preT[u] = Date.now();
-    return j;
   },
   async post(u, body) {
-    const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    return r.json();
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 60000);
+      try {
+        const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: ctl.signal });
+        if (!r.ok) return { ok: false, error: 'HTTP ' + r.status };
+        return await r.json();
+      } finally { clearTimeout(t); }
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e || 'network error') };
+    }
   },
 };
 
@@ -365,6 +383,11 @@ window.openConv = async (convId) => {
   if (!body) return;
   body.innerHTML = '<div class="empty">加载中…</div>';
   const res = await api.get(histUrl(convId));
+  if (!res || res.ok === false) {
+    body.innerHTML = `<div class="empty">历史加载失败：${esc((res && res.error) || '网络异常')}
+      <br><br><button class="btn small" onclick="openConv('${esc(convId)}')">重试</button></div>`;
+    return;
+  }
   let msgs = res.ok && res.data ? arr(res.data, 'messages', 'list', 'items', 'data') : [];
   msgs = msgs.map(normMsg);
   body.innerHTML = msgs.length
