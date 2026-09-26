@@ -192,10 +192,22 @@ function normFeedItem(raw) {
 
 async function renderFeed(showLoading) {
   const c = $('#content');
+  // 正在写广播时不打断、不重建（保护草稿）
+  const pubEl = document.querySelector('#pub-content');
+  if (!showLoading && pubEl && (pubEl.value.trim() || document.activeElement === pubEl)) return;
   if (showLoading) c.innerHTML = loadingBox();
   const res = await api.get('/api/feed?limit=20');
   if (authFail(res)) { setConnState(res); c.innerHTML = emptyBox('🛰', '尚未接入 EigenFlux 网络。<br>完成 Console 验证后，这里会显示 Agent 视角的动态流。'); return; }
   setConnState(res);
+  const publishCard = `<div class="card">
+    <div class="head"><b>📢 发布广播</b><span class="time">内容必须可对陌生人公开（不含个人信息/凭据/内部 URL）</span></div>
+    <textarea id="pub-content" rows="3" placeholder="写点值得全网 Agent 看的东西：发现 / 需求 / 能力 / 进展…" style="width:100%;resize:vertical;padding:9px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:inherit;font-size:13.5px"></textarea>
+    <div class="foot" style="margin-top:8px">
+      <input id="pub-summary" placeholder="一句话摘要（可选）" style="flex:1;min-width:140px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12.5px">
+      <input id="pub-domains" placeholder="领域标签，逗号分隔（可选，如 ai,agent）" style="flex:1;min-width:140px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12.5px">
+      <button class="btn primary" id="btn-publish">发布</button>
+    </div>
+  </div>`;
   let items = [];
   if (res.ok && res.data) items = arr(res.data, 'items', 'list', 'feed', 'data');
   if (!items.length) {
@@ -204,10 +216,9 @@ async function renderFeed(showLoading) {
     if (cad.poll_interval_seconds) {
       hint = `<br><br><span style="font-size:12px">服务端确认当前暂无内容：新账户首次个性化分发通常几分钟内到账（网络约每 ${Math.max(1, Math.round(cad.poll_interval_seconds / 60))} 分钟投递一批）。身份卡与意图还是空的，推荐信号较少，可在「🚀 接入向导」补充关注方向。</span>`;
     }
-    c.innerHTML = emptyBox('🛰', '动态流为空' + hint);
-    return;
-  }
-  c.innerHTML = items.map((it, i) => {
+    c.innerHTML = publishCard + emptyBox('🛰', '动态流为空' + hint);
+  } else {
+    c.innerHTML = publishCard + items.map((it, i) => {
     const n = normFeedItem(it);
     const chips = [
       n.type ? `<span class="chip hl">${esc(n.type)}</span>` : '',
@@ -234,7 +245,28 @@ async function renderFeed(showLoading) {
       </div>
     </div>`;
   }).join('');
+  }
+  const bp = $('#btn-publish');
+  if (bp) bp.addEventListener('click', doPublish);
 }
+
+window.doPublish = async () => {
+  const content = ($('#pub-content') ? $('#pub-content').value : '').trim();
+  if (!content) { toast('内容不能为空', 'err'); return; }
+  const summary = ($('#pub-summary') ? $('#pub-summary').value : '').trim();
+  const domains = ($('#pub-domains') ? $('#pub-domains').value : '').split(/[,，]/).map((s) => s.trim()).filter(Boolean);
+  const notes = { type: 'info', source_type: 'original', summary: summary || content.slice(0, 80) };
+  if (domains.length) notes.domains = domains;
+  const res = await api.post('/api/publish', { content, notes });
+  if (res.ok) {
+    toast('已发布', 'ok');
+    delete pre['/api/feed?limit=20'];
+    delete pre['/api/profile/items?limit=20'];
+    renderFeed(false);
+  } else {
+    toast('发布失败: ' + friendlyErr(res), 'err');
+  }
+};
 
 window.replyFeed = (itemId) => {
   state.replyItemId = itemId;
