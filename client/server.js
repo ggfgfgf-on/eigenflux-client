@@ -103,13 +103,23 @@ function run(args, opts = {}) {
     return task;
   }
 
-  const waitSlot = readBusy >= MAX_READS ? new Promise((r) => readQueue.push(r)) : Promise.resolve();
-  const task = waitSlot.then(() => { readBusy++; return execWithRetry(); });
+  let queued = false;
+  let waitSlot;
+  if (readBusy >= MAX_READS) {
+    queued = true;
+    waitSlot = new Promise((r) => readQueue.push(r));
+  } else {
+    readBusy++;
+    waitSlot = Promise.resolve();
+  }
+  const task = waitSlot.then(() => execWithRetry());
   return task.finally(() => {
-    readBusy--;
     const next = readQueue.shift();
-    if (next) { readBusy++; next(); }
-    else if (readBusy === 0) { const ws = drainWaiters.splice(0); ws.forEach((f) => f()); }
+    if (next) { next(); } // 槽位转移给排队读者，计数不变
+    else {
+      readBusy--;
+      if (readBusy === 0) { const ws = drainWaiters.splice(0); ws.forEach((f) => f()); }
+    }
   });
 }
 
