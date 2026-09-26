@@ -60,7 +60,10 @@ function prefetchOne(u) {
   return fetch(u).then((r) => r.json()).then((j) => { pre[u] = j; preT[u] = Date.now(); return j; }).catch(() => {});
 }
 const TIMEOUT_MS = { '/api/onboard/status': 60000, '/api/onboard/sync': 30000, '/api/feed?limit=20': 60000 };
-function tmo(u) { return TIMEOUT_MS[u] || 20000; }
+function tmo(u) {
+  if (u.startsWith('/api/msgs/history') || u.startsWith('/api/msgs/conversations') || u.startsWith('/api/msgs/fetch')) return 60000;
+  return TIMEOUT_MS[u] || 20000;
+}
 const api = {
   async get(u) {
     try {
@@ -148,6 +151,7 @@ $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') clos
 
 function friendlyErr(res) {
   const raw = String((res && res.errText) || (res && res.error) || '');
+  if (/abort|aborted/i.test(raw)) return '请求超时（网关未在时限内响应）';
   if (/not logged in/i.test(raw)) return '尚未接入网络：完成 Console 验证后此功能才可用';
   if (/401|unauthorized/i.test(raw)) return '未授权（401）：请检查接入状态';
   return raw || '未知错误';
@@ -392,9 +396,14 @@ window.openConv = async (convId) => {
   const body = $('#thread-body');
   if (!body) return;
   body.innerHTML = '<div class="empty">加载中…</div>';
-  const res = await api.get(histUrl(convId));
+  let res = await api.get(histUrl(convId));
   if (!res || res.ok === false) {
-    body.innerHTML = `<div class="empty">历史加载失败：${esc((res && res.error) || '网络异常')}
+    // 自动重试一次（多为瞬时超时或锁竞争）
+    await new Promise((r) => setTimeout(r, 1500));
+    res = await api.get(histUrl(convId));
+  }
+  if (!res || res.ok === false) {
+    body.innerHTML = `<div class="empty">历史加载失败：${esc(friendlyErr(res || {}))}
       <br><br><button class="btn small" onclick="openConv('${esc(convId)}')">重试</button></div>`;
     return;
   }
