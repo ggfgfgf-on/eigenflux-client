@@ -54,8 +54,10 @@ const readQueue = [];
 let writeChain = Promise.resolve();
 const MAX_READS = 3;
 
+const LOCK_RE = /credential refresh lock|timed out waiting|Agent V2 authentication failed/i;
+
 function run(args, opts = {}) {
-  const { stdin = null, actor = 'user', action = args.join(' '), mode = 'read' } = opts;
+  const { stdin = null, actor = 'user', action = args.join(' '), mode = 'read', noSettle = false } = opts;
   const started = Date.now();
   const exec = () => new Promise((resolve) => {
     const full = ['--homedir', HOME, '-f', 'json', '--no-interactive'].concat(args);
@@ -80,12 +82,13 @@ function run(args, opts = {}) {
   });
 
   // 凭据刷新锁争抢：并发进程会互相等待 35 秒超时。
-  // 失败后全网关共享一次串行「结清」调用（runtime heartbeat），完成后再重试本命令。
+  // 失败后全网关共享一次串行「结清」调用；结清调用本身绝不走结清逻辑（noSettle），
+  // 否则结清再撞锁时会等待自己 → 永久死锁 → 后续所有命令挂起。
   let settlePromise = null;
   const execWithRetry = () => exec().then((r) => {
-    if (r.code !== 0 && /credential refresh lock|timed out waiting|Agent V2 authentication failed/i.test(r.errText)) {
+    if (!noSettle && r.code !== 0 && LOCK_RE.test(r.errText)) {
       if (!settlePromise) {
-        settlePromise = run(['runtime', 'heartbeat'], { action: 'credential-settle', mode: 'write' })
+        settlePromise = run(['runtime', 'heartbeat'], { action: 'credential-settle', mode: 'write', noSettle: true })
           .catch(() => {})
           .finally(() => { settlePromise = null; });
       }
