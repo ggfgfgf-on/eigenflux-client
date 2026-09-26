@@ -816,6 +816,8 @@ window.forceRefresh = async () => {
 $('#btn-refresh').addEventListener('click', forceRefresh);
 
 // 预取完成后再渲染默认标签：F5 也不再出现加载中
+window.__EFX_READY = true;
+if (window.__EFX_BOOT_T) clearTimeout(window.__EFX_BOOT_T);
 
 // ---------- 官方控制台 ----------
 $('#btn-dashboard').addEventListener('click', async () => {

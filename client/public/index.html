@@ -72,6 +72,17 @@
 <div id="modal" class="modal hidden">
   <div class="modal-box" id="modal-box"></div>
 </div>
-<script src="/app.js?v=24"></script>
+<script>
+// 启动看门狗：12 秒内 app.js 未就绪（window.__EFX_READY），强制带时间戳重载，确保任何旧缓存/挂起都自动恢复
+(function () {
+  var t = setTimeout(function () {
+    if (!window.__EFX_READY) {
+      location.replace(location.pathname + '?hardcb=' + Date.now());
+    }
+  }, 12000);
+  window.__EFX_BOOT_T = t;
+})();
+</script>
+<script src="/app.js?v=25"></script>
 </body>
 </html>

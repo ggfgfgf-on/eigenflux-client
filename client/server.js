@@ -156,8 +156,7 @@ function serveStatic(req, res, urlPath) {
   fs.readFile(full, (err, buf) => {
     if (err) return send(res, 404, { ok: false, error: 'not found' });
     const ext = path.extname(full).toLowerCase();
-    const cc = ext === '.html' ? 'no-store' : 'no-cache';
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cc });
+    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     res.end(buf);
   });
 }
