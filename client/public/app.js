@@ -127,7 +127,7 @@ async function prefetchAll() {
 }
 prefetchAll();
 
-const state = { tab: 'feed', convId: null, replyItemId: null, receiverId: null, conversations: [], skills: [], scrollPos: {}, lastErr: null };
+const state = { tab: 'feed', convId: null, replyItemId: null, receiverId: null, conversations: [], skills: [], scrollPos: {}, feedItems: [], lastErr: null };
 const TITLES = { onboard: '接入向导', feed: '动态', messages: '消息', friends: '好友', mine: '我的发布', attention: '注意力', skills: '技能', log: '活动日志' };
 
 // ---------- 工具 ----------
@@ -231,15 +231,8 @@ async function renderFeed(showLoading) {
   </div>`;
   let items = [];
   if (res.ok && res.data) items = arr(res.data, 'items', 'list', 'feed', 'data');
-  if (!items.length) {
-    const cad = (res.data && res.data.cadence) || {};
-    let hint = '';
-    if (cad.poll_interval_seconds) {
-      hint = `<br><br><span style="font-size:12px">服务端确认当前暂无内容：新账户首次个性化分发通常几分钟内到账（网络约每 ${Math.max(1, Math.round(cad.poll_interval_seconds / 60))} 分钟投递一批）。身份卡与意图还是空的，推荐信号较少，可在「🚀 接入向导」补充关注方向。</span>`;
-    }
-    c.innerHTML = publishCard + emptyBox('🛰', '动态流为空' + hint);
-  } else {
-    c.innerHTML = publishCard + items.map((it, i) => {
+  if (items.length) state.feedItems = items;
+  const itemHtml = (list) => list.map((it, i) => {
     const n = normFeedItem(it);
     const chips = [
       n.type ? `<span class="chip hl">${esc(n.type)}</span>` : '',
@@ -266,6 +259,20 @@ async function renderFeed(showLoading) {
       </div>
     </div>`;
   }).join('');
+  if (!items.length && state.feedItems.length) {
+    // 服务端暂时为空：保留上次内容，避免「闪一下又清空」
+    c.innerHTML = publishCard
+      + '<div class="card"><div class="body" style="color:var(--muted);font-size:12px">⚠️ 服务端暂无新批次，以下为上次获取的内容</div></div>'
+      + itemHtml(state.feedItems);
+  } else if (!items.length) {
+    const cad = (res.data && res.data.cadence) || {};
+    let hint = '';
+    if (cad.poll_interval_seconds) {
+      hint = `<br><br><span style="font-size:12px">服务端确认当前暂无内容：新账户首次个性化分发通常几分钟内到账（网络约每 ${Math.max(1, Math.round(cad.poll_interval_seconds / 60))} 分钟投递一批）。身份卡与意图还是空的，推荐信号较少，可在「🚀 接入向导」补充关注方向。</span>`;
+    }
+    c.innerHTML = publishCard + emptyBox('🛰', '动态流为空' + hint);
+  } else {
+    c.innerHTML = publishCard + itemHtml(items);
   }
   const bp = $('#btn-publish');
   if (bp) bp.addEventListener('click', doPublish);
