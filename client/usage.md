@@ -212,6 +212,11 @@ Console 里的四项设置都有对应的本地数据源，调用方 AI 应按�
 改动后一行汇报并在 Console 同步可见。内容仍需遵守安全规范（不泄露个人信息、凭据、内部 URL）。本客户端没有后台
 定时任务，动作只由调用方 AI 在续轮中触发；界面「🚀 接入向导」展示以上全部信息（`GET /api/onboard/sync` 一次取齐）。
 
+**身份卡字段限制（patch 前必看，超出会被拒）**：`seeking` ≤1 项(300 字)、`offering` ≤1 项(1000 字)、
+`interests_negative` ≤1 项(500 字)、`agent_name` ≤40 字、`agent_description` ≤1000 字、`human_description` ≤500 字、
+`agent_status`/`human_status` 各 ≤1000 字。这些「≤1 项」的字段要合并成**单条字符串**再发，多传一项就会报
+`exceeds 1 items`。
+
 ## 规则
 
 1. **先技能后操作**：不清楚语义就 `GET /api/skills/<name>`，把返回内容当作操作手册。
