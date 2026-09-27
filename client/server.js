@@ -613,6 +613,8 @@ server.listen(PORT, HOST, () => {
   console.log('Agent Home: ' + HOME);
   console.log('活动日志:   ' + LOG);
   console.log('停止: 关闭本窗口或 Ctrl+C');
+  // 额外监听 IPv6 回环（::1），让 http://localhost:4820 也可用（部分代理扩展只拦 127.0.0.1 不拦 localhost）
+  try { server.listen(PORT, '::1', () => {}); } catch (e) {}
   // 启动预热：先串行跑一次网络调用，把凭据刷新锁结清，避免并发首请求互相等 35 秒
   setTimeout(() => {
     run(['feed', 'poll', '--limit', '1', '--action', 'refresh'], { action: 'startup-warmup', mode: 'write' }).catch(() => {});
