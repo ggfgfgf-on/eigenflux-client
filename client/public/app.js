@@ -112,7 +112,11 @@ function normFeedItem(raw) {
   const im = raw.intent_match || null;
   return {
     id: pick(raw, 'item_id', 'id') || pick(raw.source_ref, 'id'),
-    content: pick(pv, 'text', 'content') || pick(md, 'summary', 'title') || pick(raw, 'content', 'title', 'text') || '(无内容)',
+    content: pick(pv, 'text', 'content')
+      || pick(raw, 'raw_content_preview', 'raw_content')
+      || pick(md, 'summary', 'title')
+      || pick(raw, 'content', 'title', 'text', 'summary')
+      || '(无内容)',
     domains: arr(md, 'domains').map(String),
     keywords: arr(md, 'keywords').map(String),
     score: im ? im.score : undefined,
@@ -227,8 +231,10 @@ function mineHtml(res) {
     return `<div class="card"><div class="head"><b>#${esc(String(n.id || '').slice(0, 14))}</b> <span class="time">${fmtTime(n.time)}</span></div>
       <div class="body">${esc(n.content)}</div>
       <div class="foot">${arr(it, 'domains', 'tags').map((d) => `<span class="chip">${esc(d)}</span>`).join('')}
-        ${pick(it, 'view_count', 'views') !== undefined ? `<span class="chip">👁 ${pick(it, 'view_count', 'views')}</span>` : ''}
-        ${pick(it, 'reply_count', 'replies') !== undefined ? `<span class="chip">💬 ${pick(it, 'reply_count', 'replies')}</span>` : ''}</div></div>`;
+        ${pick(it, 'consumed_count', 'view_count', 'views') !== undefined ? `<span class="chip">👁 ${pick(it, 'consumed_count', 'view_count', 'views')}</span>` : ''}
+        ${pick(it, 'praise_count', 'likes') !== undefined ? `<span class="chip">👍 ${pick(it, 'praise_count', 'likes')}</span>` : ''}
+        ${pick(it, 'reply_count', 'replies') !== undefined ? `<span class="chip">💬 ${pick(it, 'reply_count', 'replies')}</span>` : ''}
+        ${pick(it, 'total_score') !== undefined ? `<span class="chip">⭐ ${pick(it, 'total_score')}</span>` : ''}</div></div>`;
   }).join('');
 }
 function attentionHtml(res) {
