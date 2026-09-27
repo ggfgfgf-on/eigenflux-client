@@ -808,25 +808,18 @@ window.copyObUrl = async () => {
 
 // ---------- Tab 切换 ----------
 const renderedTabs = new Set();
-const tabBusy = {};
 window.switchTab = async function (tab) {
-  if (tabBusy[tab]) return;
-  tabBusy[tab] = true;
   const token = ++renderToken;
   const contentEl = $('#content');
-  try {
-    state.scrollPos[state.tab] = contentEl.scrollTop;
-    state.tab = tab;
-    $('#tab-title').textContent = TITLES[tab] || tab;
-    document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.tab === tab));
-    const showLoading = !renderedTabs.has(tab) && !pre[TAB_URLS[tab]];
-    renderedTabs.add(tab);
-    const fn = { onboard: renderOnboard, feed: renderFeed, messages: renderMessages, friends: renderFriends, mine: renderMine, attention: renderAttention, skills: renderSkills, log: renderLog }[tab];
-    if (fn) await fn(showLoading, token);
-    if (token === renderToken) contentEl.scrollTop = state.scrollPos[tab] || 0;
-  } finally {
-    tabBusy[tab] = false;
-  }
+  state.scrollPos[state.tab] = contentEl.scrollTop;
+  state.tab = tab;
+  $('#tab-title').textContent = TITLES[tab] || tab;
+  document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.tab === tab));
+  const showLoading = !renderedTabs.has(tab) && !pre[TAB_URLS[tab]];
+  renderedTabs.add(tab);
+  const fn = { onboard: renderOnboard, feed: renderFeed, messages: renderMessages, friends: renderFriends, mine: renderMine, attention: renderAttention, skills: renderSkills, log: renderLog }[tab];
+  if (fn) await fn(showLoading, token);
+  if (token === renderToken) contentEl.scrollTop = state.scrollPos[tab] || 0;
 };
 
 document.querySelectorAll('.nav-item').forEach((el) => {
@@ -843,7 +836,6 @@ window.forceRefresh = async () => {
     if (tab === 'onboard' && pre['/api/onboard/status'] && pre['/api/onboard/status'].state === 'active') {
       try { pre['/api/onboard/sync'] = await (await fetch('/api/onboard/sync')).json(); } catch (e) {}
     }
-    tabBusy[tab] = false;
     const fn = { onboard: renderOnboard, feed: renderFeed, messages: renderMessages, friends: renderFriends, mine: renderMine, attention: renderAttention, skills: renderSkills, log: renderLog }[tab];
     if (fn) await fn(false, ++renderToken);
     toast('已刷新', 'ok');
