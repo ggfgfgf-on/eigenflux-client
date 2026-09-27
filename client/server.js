@@ -48,6 +48,35 @@ function cached(key, ttlMs, producer) {
   return p;
 }
 
+// CLI 本地保存的上次完整 feed 结果（秒回用）
+let staleFeed = null;
+let staleFeedAt = 0;
+function readStaleFeed() {
+  const now = Date.now();
+  if (staleFeed && now - staleFeedAt < 60000) return staleFeed;
+  try {
+    const dir = path.join(HOME, 'servers', 'eigenflux', 'data', 'broadcasts');
+    let newest = null;
+    const walk = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (/^feeds-.*\.json$/.test(e.name)) {
+          const st = fs.statSync(full);
+          if (!newest || st.mtimeMs > newest.mtimeMs) newest = full;
+        }
+      }
+    };
+    walk(dir);
+    if (newest) {
+      const o = JSON.parse(fs.readFileSync(newest, 'utf8'));
+      if (o && Array.isArray(o.items)) staleFeed = o;
+    }
+  } catch (e) {}
+  staleFeedAt = now;
+  return staleFeed;
+}
+
 // ---------- CLI 执行（读并发 ≤6；写串行；凭据到期前主动单飞预刷新，杜绝锁风暴） ----------
 let readBusy = 0;
 const readQueue = [];
@@ -316,7 +345,20 @@ const server = http.createServer(async (req, res) => {
 
     if (p === '/api/feed') {
       const limit = q.get('limit') || '20';
-      const r = await cached('feed:' + limit, 60000, () => run(['feed', 'poll', '--limit', limit], { action: `feed poll --limit ${limit}` }));
+      const key = 'feed:' + limit;
+      const hit = cache.get(key);
+      if (hit && Date.now() - hit.t < 60000) {
+        return send(res, 200, { ok: true, code: 0, data: hit.value, errText: '' });
+      }
+      // 秒回：用 CLI 本地保存的上次完整结果（stale），后台再真实刷新
+      const stale = readStaleFeed();
+      if (stale && Array.isArray(stale.items) && stale.items.length) {
+        cached(key, 60000, () => run(['feed', 'poll', '--limit', limit], { action: `feed poll --limit ${limit}` }))
+          .then((r) => { if (r.code === 0 && r.data) cache.set(key, { t: Date.now(), value: r.data }); })
+          .catch(() => {});
+        return send(res, 200, { ok: true, code: 0, data: Object.assign({}, stale, { stale: true }), errText: '' });
+      }
+      const r = await cached(key, 60000, () => run(['feed', 'poll', '--limit', limit], { action: `feed poll --limit ${limit}` }));
       return send(res, 200, { ok: r.code === 0, code: r.code, data: r.data, errText: r.errText });
     }
     if (p === '/api/feed/item') {
