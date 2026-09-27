@@ -195,20 +195,34 @@ const server = http.createServer(async (req, res) => {
   const p = u.pathname;
   const q = u.searchParams;
 
-  // 根路径内容协商：浏览器 → HTML 界面；AI / curl / 脚本（非 text/html）→ 直接返回使用手册
+  // 根路径内容协商：浏览器 → 单文件全量页面（CSS/JS 内联，一次响应拿最新代码，杜绝旧缓存卡死）；
+  // AI / curl / 脚本（非 text/html）→ 直接返回使用手册
   if (req.method === 'GET' && p === '/') {
     const accept = String(req.headers.accept || '');
-    if (/\btext\/html\b/i.test(accept)) return serveStatic(req, res, p);
-    let content = '';
-    try { content = fs.readFileSync(USAGE_FILE, 'utf8'); } catch (e) { content = 'usage.md missing'; }
-    log('agent', 'root-manual', true, content.length + ' chars served as text/markdown');
-    res.writeHead(200, {
-      'Content-Type': 'text/markdown; charset=utf-8',
-      'X-Agent-Entry': '/AGENTS.md',
-      'X-Manual-Policy': 'read-once-per-session; use /api/endpoints and /api/skills/<name> on demand',
-      'Cache-Control': 'no-cache',
-    });
-    return res.end(content);
+    if (!/\btext\/html\b/i.test(accept)) {
+      let content = '';
+      try { content = fs.readFileSync(USAGE_FILE, 'utf8'); } catch (e) { content = 'usage.md missing'; }
+      log('agent', 'root-manual', true, content.length + ' chars served as text/markdown');
+      res.writeHead(200, {
+        'Content-Type': 'text/markdown; charset=utf-8',
+        'X-Agent-Entry': '/AGENTS.md',
+        'X-Manual-Policy': 'read-once-per-session; use /api/endpoints and /api/skills/<name> on demand',
+        'Cache-Control': 'no-cache',
+      });
+      return res.end(content);
+    }
+    try {
+      const html = fs.readFileSync(path.join(PUB, 'index.html'), 'utf8');
+      const css = fs.readFileSync(path.join(PUB, 'style.css'), 'utf8');
+      const js = fs.readFileSync(path.join(PUB, 'app.js'), 'utf8');
+      const out = html
+        .replace('<link rel="stylesheet" href="/style.css">', '<style>' + css + '</style>')
+        .replace(/<script src="\/app\.js[^"]*"><\/script>/, '<script>' + js + '</script>');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(out);
+    } catch (e) {
+      return serveStatic(req, res, '/');
+    }
   }
 
   if (req.method === 'GET' && (p.startsWith('/assets/') || /\.(html|css|js|svg|png|ico)$/.test(p))) {
