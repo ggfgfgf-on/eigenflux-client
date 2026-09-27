@@ -532,14 +532,31 @@ document.querySelectorAll('.nav-item').forEach((el) => {
   el.addEventListener('click', () => mount(el.dataset.tab));
 });
 $('#btn-refresh').addEventListener('click', () => { paint(state.tab, true); toast('已刷新', 'ok'); });
-$('#btn-dashboard').addEventListener('click', async () => {
+$('#btn-dashboard').addEventListener('click', () => {
   modal('<h3>打开官方控制台</h3><p>生成一次性登录链接（72 小时内有效，仅能使用一次）。</p><div class="actions"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" id="dash-go">生成并打开</button></div>');
   $('#dash-go').addEventListener('click', async () => {
-    const res = await load('/api/dashboard');
-    const url = res && res.ok !== false && res.data ? pick(res.data, 'url', 'link', 'dashboard_url', 'raw') : null;
-    closeModal();
-    if (url && /^https?:/.test(String(url))) window.open(String(url), '_blank');
-    else toast('生成失败: ' + friendlyErr(res || {}), 'err');
+    const btn = $('#dash-go');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '生成中…（最多 60 秒）';
+    try {
+      // 不走缓存：每次都要一份全新的单次链接
+      const res = await fetchJson('/api/dashboard', 60000);
+      const url = res && res.ok !== false && res.data ? pick(res.data, 'url', 'link', 'dashboard_url', 'raw') : null;
+      if (url && /^https?:/.test(String(url))) {
+        closeModal();
+        window.open(String(url), '_blank');
+        toast('链接已生成并打开（仅一次有效）', 'ok');
+        return;
+      }
+      btn.disabled = false;
+      btn.textContent = '生成并打开';
+      toast('生成失败: ' + friendlyErr(res || {}), 'err');
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = '生成并打开';
+      toast('生成失败: ' + String((e && e.message) || e), 'err');
+    }
   });
 });
 

@@ -96,8 +96,10 @@ function readCredExpiry() {
 function ensureFresh() {
   readCredExpiry();
   if (!credExpiresAt || Date.now() <= credExpiresAt - 60000) return Promise.resolve();
+  // 注意：预刷新必须走读模式（noSettle），绝不能走写模式——
+  // 写模式会捕获 prev=writeChain，而触发刷新的正是 writeChain 里等待本链的任务 → 环形死锁。
   const t = refreshChain
-    .then(() => run(['runtime', 'heartbeat'], { action: 'credential-pre-refresh', mode: 'write', noSettle: true }))
+    .then(() => run(['runtime', 'heartbeat'], { action: 'credential-pre-refresh', mode: 'read', noSettle: true }))
     .then(() => { readCredExpiry(); })
     .catch(() => {});
   refreshChain = t;
@@ -111,25 +113,36 @@ function run(args, opts = {}) {
   const { stdin = null, actor = 'user', action = args.join(' '), mode = 'read', noSettle = false } = opts;
   const started = Date.now();
   const exec = () => new Promise((resolve) => {
+    // 硬看门狗：即便 execFile 回调永远不触发（Windows 管道被孙进程继承等极端情况），
+    // 也必须保证 exec() 有界返回，绝不让写链/刷新链被永久毒死。
+    let settled = false;
+    const finish = (r) => { if (!settled) { settled = true; clearTimeout(bomb); resolve(r); } };
+    const bomb = setTimeout(() => finish({
+      code: 1, data: null, errText: 'exec watchdog: CLI callback never fired', ms: Date.now() - started, hung: true,
+    }), 105000);
     const full = ['--homedir', HOME, '-f', 'json', '--no-interactive'].concat(args);
-    const child = execFile(BIN, full, {
-      env: Object.assign({}, process.env, { EIGENFLUX_HOME: HOME, EIGENFLUX_SKILLS_DIR: SKILLS, EIGENFLUX_MODEL: 'deepseek-v4-pro' }),
-      windowsHide: true,
-      timeout: 90000,
-      maxBuffer: 32 * 1024 * 1024,
-    }, (err, stdout, stderr) => {
-      const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
-      const out = String(stdout || '');
-      const errText = String(stderr || (err && err.message) || '');
-      let data = null;
-      try { data = JSON.parse(out); } catch (e) { data = out ? { raw: out } : null; }
-      const ms = Date.now() - started;
-      const ok = code === 0 && !/error|unauthorized|invalid/i.test(errText.slice(0, 200));
-      log(actor, action, ok,
-        `exit=${code} ${ms}ms` + (errText ? ' ERR:' + errText.slice(0, 400) : ''));
-      resolve({ code, data, errText, ms });
-    });
-    if (stdin != null) { child.stdin.write(stdin); child.stdin.end(); }
+    try {
+      const child = execFile(BIN, full, {
+        env: Object.assign({}, process.env, { EIGENFLUX_HOME: HOME, EIGENFLUX_SKILLS_DIR: SKILLS, EIGENFLUX_MODEL: 'deepseek-v4-pro' }),
+        windowsHide: true,
+        timeout: 90000,
+        maxBuffer: 32 * 1024 * 1024,
+      }, (err, stdout, stderr) => {
+        const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
+        const out = String(stdout || '');
+        const errText = String(stderr || (err && err.message) || '');
+        let data = null;
+        try { data = JSON.parse(out); } catch (e) { data = out ? { raw: out } : null; }
+        const ms = Date.now() - started;
+        const ok = code === 0 && !/error|unauthorized|invalid/i.test(errText.slice(0, 200));
+        log(actor, action, ok,
+          `exit=${code} ${ms}ms` + (errText ? ' ERR:' + errText.slice(0, 400) : ''));
+        finish({ code, data, errText, ms });
+      });
+      if (stdin != null) { child.stdin.write(stdin); child.stdin.end(); }
+    } catch (e) {
+      finish({ code: 1, data: null, errText: 'spawn error: ' + String((e && e.message) || e), ms: Date.now() - started });
+    }
   });
 
   // 撞锁兜底：失败后全网关共享一次串行「结清」；结清本身 noSettle，绝不递归（防自等死锁）
@@ -137,7 +150,8 @@ function run(args, opts = {}) {
   const execWithRetry = () => exec().then((r) => {
     if (!noSettle && r.code !== 0 && LOCK_RE.test(r.errText)) {
       if (!settlePromise) {
-        settlePromise = run(['runtime', 'heartbeat'], { action: 'credential-settle', mode: 'write', noSettle: true })
+        // 结清走读模式：写模式会挂在 writeChain 上，而触发结清的正是 writeChain 里的任务 → 自等死锁
+        settlePromise = run(['runtime', 'heartbeat'], { action: 'credential-settle', mode: 'read', noSettle: true })
           .catch(() => {})
           .finally(() => { settlePromise = null; });
       }
