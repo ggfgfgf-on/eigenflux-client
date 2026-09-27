@@ -73,15 +73,37 @@
   <div class="modal-box" id="modal-box"></div>
 </div>
 <script>
-// 启动看门狗：12 秒内 app.js 未就绪（window.__EFX_READY），强制带时间戳重载，确保任何旧缓存/挂起都自动恢复
+// 启动看门狗：12 秒内 app.js 未就绪则强制重载；但页面已有 JS 错误时不再重载（防无限刷新循环）
 (function () {
   var t = setTimeout(function () {
-    if (!window.__EFX_READY) {
+    if (!window.__EFX_READY && !window.__EFX_ERROR) {
       location.replace(location.pathname + '?hardcb=' + Date.now());
     }
   }, 12000);
   window.__EFX_BOOT_T = t;
 })();
+// 错误自显：任何未捕获错误直接显示在页面底部红条上
+function showJsError(text) {
+  try {
+    var el = document.getElementById('js-error');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'js-error';
+      el.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#7a1f1f;color:#ffd7d7;padding:8px 12px;font:12px monospace;z-index:9999;white-space:pre-wrap;';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+  } catch (e) {}
+}
+window.addEventListener('error', function (e) {
+  window.__EFX_ERROR = true;
+  showJsError('JS 错误: ' + (e.message || '') + ' @ ' + (e.filename || '') + ':' + (e.lineno || ''));
+});
+window.addEventListener('unhandledrejection', function (e) {
+  window.__EFX_ERROR = true;
+  var r = e.reason;
+  showJsError('Promise 错误: ' + String(r && (r.message || r)));
+});
 </script>
 <script src="/app.js?v=29"></script>
 </body>
