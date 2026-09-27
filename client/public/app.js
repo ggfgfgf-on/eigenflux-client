@@ -133,6 +133,10 @@ prefetchAll();
 const state = { tab: 'feed', convId: null, replyItemId: null, receiverId: null, conversations: [], skills: [], scrollPos: {}, feedItems: [], lastErr: null };
 const TITLES = { onboard: '接入向导', feed: '动态', messages: '消息', friends: '好友', mine: '我的发布', attention: '注意力', skills: '技能', log: '活动日志' };
 
+// 渲染代次令牌：只有最新一次触发的渲染允许写界面，旧的自动作废（修复快速点标签乱序/堆积变慢）
+let renderToken = 0;
+function retrigger(fn) { const t = ++renderToken; fn(false, t); }
+
 // ---------- 工具 ----------
 function toast(msg, kind) {
   const t = $('#toast');
@@ -221,13 +225,14 @@ function normFeedItem(raw) {
   };
 }
 
-async function renderFeed(showLoading) {
+async function renderFeed(showLoading, token) {
   const c = $('#content');
   // 正在写广播时不打断、不重建（保护草稿）
   const pubEl = document.querySelector('#pub-content');
   if (!showLoading && pubEl && (pubEl.value.trim() || document.activeElement === pubEl)) return;
   if (showLoading) c.innerHTML = loadingBox();
   const res = await api.get('/api/feed?limit=20');
+  if (token !== renderToken) return; // 过期渲染作废
   if (authFail(res)) { setConnState(res); c.innerHTML = emptyBox('🛰', '尚未接入 EigenFlux 网络。<br>完成 Console 验证后，这里会显示 Agent 视角的动态流。'); return; }
   setConnState(res);
   const publishCard = `<div class="card">
@@ -303,7 +308,7 @@ window.doPublish = async () => {
     toast('已发布', 'ok');
     delete pre['/api/feed?limit=20'];
     delete pre['/api/profile/items?limit=20'];
-    renderFeed(false);
+    retrigger(renderFeed);
   } else {
     toast('发布失败: ' + friendlyErr(res), 'err');
   }
@@ -346,7 +351,7 @@ function normMsg(raw) {
   };
 }
 
-async function renderMessages(showLoading) {
+async function renderMessages(showLoading, token) {
   const c = $('#content');
   // 非首次刷新时：开着会话或正在输入 → 保持当前状态，绝不重建（保护输入框与阅读位置）
   if (!showLoading && c.querySelector('.thread')) {
@@ -355,6 +360,7 @@ async function renderMessages(showLoading) {
   }
   if (showLoading) c.innerHTML = loadingBox();
   const res = await api.get('/api/msgs/conversations');
+  if (token !== renderToken) return; // 过期渲染作废
   if (authFail(res)) { setConnState(res); c.innerHTML = emptyBox('💬', '尚未接入，消息列表暂不可用'); return; }
   state.conversations = res.ok && res.data ? arr(res.data, 'conversations', 'list', 'items', 'data').map(normConv) : [];
   // 后台预取前 6 个会话的历史，点开秒开
@@ -443,10 +449,11 @@ window.sendMsg = async () => {
   else toast('发送失败: ' + friendlyErr(res), 'err');
 };
 
-async function renderFriends(showLoading) {
+async function renderFriends(showLoading, token) {
   const c = $('#content');
   if (showLoading) c.innerHTML = loadingBox();
   const [fr, rq] = await Promise.all([api.get('/api/relations/friends'), api.get('/api/relations/requests')]);
+  if (token !== renderToken) return; // 过期渲染作废
   if (authFail(fr)) { setConnState(fr); c.innerHTML = emptyBox('🤝', '尚未接入，好友列表暂不可用'); return; }
   const friends = fr.ok && fr.data ? arr(fr.data, 'friends', 'list', 'items', 'data') : [];
   const requests = rq.ok && rq.data ? arr(rq.data, 'requests', 'applications', 'list', 'items', 'data') : [];
@@ -494,10 +501,11 @@ window.msgFriend = (receiverId) => {
   switchTab('messages');
 };
 
-async function renderMine(showLoading) {
+async function renderMine(showLoading, token) {
   const c = $('#content');
   if (showLoading) c.innerHTML = loadingBox();
   const res = await api.get('/api/profile/items?limit=20');
+  if (token !== renderToken) return; // 过期渲染作废
   if (authFail(res)) { setConnState(res); c.innerHTML = emptyBox('📤', '尚未接入，暂无发布'); return; }
   const items = res.ok && res.data ? arr(res.data, 'items', 'list', 'data') : [];
   c.innerHTML = items.length
@@ -515,10 +523,11 @@ async function renderMine(showLoading) {
     : emptyBox('📤', '还没有发布过广播');
 }
 
-async function renderAttention(showLoading) {
+async function renderAttention(showLoading, token) {
   const c = $('#content');
   if (showLoading) c.innerHTML = loadingBox();
   const res = await api.get('/api/attention?status=open');
+  if (token !== renderToken) return; // 过期渲染作废
   if (authFail(res)) { setConnState(res); c.innerHTML = emptyBox('🔔', '尚未接入，暂无注意力项'); return; }
   const items = res.ok && res.data ? arr(res.data, 'items', 'attention_items', 'list', 'data') : [];
   $('#badge-att').classList.toggle('hidden', !items.length);
@@ -556,9 +565,10 @@ window.doDismissAttention = async (id, rev) => {
   renderAttention();
 };
 
-async function renderLog() {
+async function renderLog(showLoading, token) {
   const c = $('#content');
   const res = await api.get('/api/activity');
+  if (token !== renderToken) return; // 过期渲染作废
   const items = res.ok ? res.items : [];
   c.innerHTML = items.length
     ? items.slice().reverse().map((e) => `<div class="log-item ${e.ok ? 'ok' : 'err'}">
@@ -572,10 +582,11 @@ async function renderLog() {
 }
 
 // ---------- 技能（内置，任何 Agent 按需获取） ----------
-async function renderSkills(showLoading) {
+async function renderSkills(showLoading, token) {
   const c = $('#content');
   if (showLoading) c.innerHTML = loadingBox();
   const [list, usage] = await Promise.all([api.get('/api/skills'), api.get('/api/usage')]);
+  if (token !== renderToken) return; // 过期渲染作废
   state.skills = (list.ok && list.skills) || [];
   c.innerHTML = `
     <div class="card">
@@ -658,7 +669,7 @@ function paintPill(state) {
   else if (state === 'provisioned') { pill.className = 'status-pill status-wait'; $('#status-text').textContent = '账户已创建 · 待 Console 验证'; }
   else if (state === 'no_account') { pill.className = 'status-pill status-bad'; $('#status-text').textContent = '未接入'; }
 }
-async function renderOnboard(showLoading) {
+async function renderOnboard(showLoading, token) {
   const c = $('#content');
   const nameEl = document.querySelector('#ob-name');
   if (!showLoading && nameEl && document.activeElement === nameEl) return; // 正在输入 Agent 名称，不打断
@@ -672,18 +683,19 @@ async function renderOnboard(showLoading) {
     // 不阻塞：先渲染「连接网关中」，后台取到后自动重绘（不弹 20 秒失败卡）
     c.innerHTML = `<div class="card"><div class="head"><b>⏳ 连接网关中…</b></div>
       <div class="body" style="color:var(--muted)">稍候自动重试。</div></div>`;
-    api.get('/api/onboard/status').then((r2) => { if (r2) { pre['/api/onboard/status'] = r2; renderOnboard(false); } });
+    api.get('/api/onboard/status').then((r2) => { if (r2) { pre['/api/onboard/status'] = r2; retrigger(renderOnboard); } });
     return;
   }
   paintPill(res && res.ok ? res.state : null);
+  if (token !== renderToken) return; // 过期渲染作废
   if (usedFast && !pre['/api/onboard/status']) {
-    api.get('/api/onboard/status').then((r2) => { pre['/api/onboard/status'] = r2; renderOnboard(false); });
+    api.get('/api/onboard/status').then((r2) => { pre['/api/onboard/status'] = r2; retrigger(renderOnboard); });
   }
   const loadErr = (!res || res.ok === false) ? ((res && res.error) || '网络异常') : null;
   if (loadErr) {
     c.innerHTML = `<div class="card"><div class="head"><b>⚠️ 状态加载失败</b></div>
       <div class="body">${esc(loadErr)}<br><span style="color:var(--muted);font-size:12px">网关可能正忙或未启动（本页数据 20 秒超时）。</span></div>
-      <div class="foot"><button class="btn small" onclick="renderOnboard(false)">重试</button></div></div>`;
+      <div class="foot"><button class="btn small" onclick="retrigger(renderOnboard)">重试</button></div></div>`;
     return;
   }
   const labels = {
@@ -699,7 +711,7 @@ async function renderOnboard(showLoading) {
       <div class="head"><b>当前状态：</b><span class="chip hl">${esc(st[0])}</span>
         ${res.mode ? `<span class="chip">Feed 模式：${esc(res.mode)}</span>` : ''}</div>
       <div class="body">${esc(st[1])}</div>
-      <div class="foot"><button class="btn small" onclick="renderOnboard()">⟳ 检查状态</button></div>
+      <div class="foot"><button class="btn small" onclick="retrigger(renderOnboard)">⟳ 检查状态</button></div>
     </div>
     <div class="card">
       <div class="head"><b>第 1 步 · 创建本地身份</b></div>
@@ -735,7 +747,7 @@ async function renderOnboard(showLoading) {
   $('#ob-init').addEventListener('click', async () => {
     const r = await api.post('/api/onboard/init');
     toast(r.ok ? '身份就绪' : ('失败: ' + friendlyErr(r)), r.ok ? 'ok' : 'err');
-    renderOnboard();
+    retrigger(renderOnboard);
   });
   const nameAfter = document.querySelector('#ob-name');
   if (nameAfter) nameAfter.value = prevName;
@@ -750,7 +762,7 @@ async function renderOnboard(showLoading) {
     } else {
       toast('创建失败: ' + friendlyErr(r), 'err');
     }
-    renderOnboard();
+    retrigger(renderOnboard);
   });
   $('#ob-hb').addEventListener('click', async () => {
     const out = $('#ob-hb-out');
@@ -800,6 +812,7 @@ const tabBusy = {};
 window.switchTab = async function (tab) {
   if (tabBusy[tab]) return;
   tabBusy[tab] = true;
+  const token = ++renderToken;
   const contentEl = $('#content');
   try {
     state.scrollPos[state.tab] = contentEl.scrollTop;
@@ -809,8 +822,8 @@ window.switchTab = async function (tab) {
     const showLoading = !renderedTabs.has(tab) && !pre[TAB_URLS[tab]];
     renderedTabs.add(tab);
     const fn = { onboard: renderOnboard, feed: renderFeed, messages: renderMessages, friends: renderFriends, mine: renderMine, attention: renderAttention, skills: renderSkills, log: renderLog }[tab];
-    if (fn) await fn(showLoading);
-    contentEl.scrollTop = state.scrollPos[tab] || 0;
+    if (fn) await fn(showLoading, token);
+    if (token === renderToken) contentEl.scrollTop = state.scrollPos[tab] || 0;
   } finally {
     tabBusy[tab] = false;
   }
@@ -832,7 +845,7 @@ window.forceRefresh = async () => {
     }
     tabBusy[tab] = false;
     const fn = { onboard: renderOnboard, feed: renderFeed, messages: renderMessages, friends: renderFriends, mine: renderMine, attention: renderAttention, skills: renderSkills, log: renderLog }[tab];
-    if (fn) await fn(false);
+    if (fn) await fn(false, ++renderToken);
     toast('已刷新', 'ok');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⟳ 刷新'; }
